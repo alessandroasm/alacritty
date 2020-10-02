@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use unicode_width::UnicodeWidthChar;
 use alacritty_terminal::term::SizeInfo;
 
 pub const CLOSE_BUTTON_TEXT: &str = "[X]";
@@ -42,8 +43,8 @@ impl Message {
         // Split line to fit the screen.
         let mut lines = Vec::new();
         let mut line = String::new();
+        let mut line_len = 0usize;
         for c in self.text.trim().chars() {
-            let line_len = line.chars().count();
             if c == '\n'
                 || line_len == num_cols
                 // Keep space in first line for button.
@@ -55,16 +56,24 @@ impl Message {
                 if let (Some(index), true) = (line.rfind(char::is_whitespace), c != '\n') {
                     let split = line.split_off(index + 1);
                     line.pop();
+
                     lines.push(Self::pad_text(line, num_cols));
-                    line = split
+                    line = split;
+                    line_len = line.chars().filter(|c| *c != '\r').map(|c| c.width().unwrap()).sum();
                 } else {
                     lines.push(Self::pad_text(line, num_cols));
                     line = String::new();
+
+                    line_len = 0;
                 }
             }
 
             if c != '\n' {
                 line.push(c);
+
+                if let Some(char_width) = c.width() {
+                    line_len += char_width;
+                }
             }
         }
         lines.push(Self::pad_text(line, num_cols));
@@ -111,7 +120,8 @@ impl Message {
     /// Right-pad text to fit a specific number of columns.
     #[inline]
     fn pad_text(mut text: String, num_cols: usize) -> String {
-        let padding_len = num_cols.saturating_sub(text.chars().count());
+        let padding_len = num_cols.saturating_sub(
+            text.chars().filter(|c| *c != '\r').map(|c| c.width().unwrap()).sum());
         text.extend(vec![' '; padding_len]);
         text
     }
