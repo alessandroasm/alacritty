@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use unicode_width::UnicodeWidthChar;
+use unicode_width::{ UnicodeWidthChar, UnicodeWidthStr };
 use alacritty_terminal::term::SizeInfo;
 
 pub const CLOSE_BUTTON_TEXT: &str = "[X]";
@@ -38,7 +38,7 @@ impl Message {
         let total_lines =
             (size_info.height() - 2. * size_info.padding_y()) / size_info.cell_height();
         let max_lines = (total_lines as usize).saturating_sub(MIN_FREE_LINES);
-        let button_len = CLOSE_BUTTON_TEXT.len();
+        let button_len = CLOSE_BUTTON_TEXT.width();
 
         // Split line to fit the screen.
         let mut lines = Vec::new();
@@ -59,7 +59,7 @@ impl Message {
 
                     lines.push(Self::pad_text(line, num_cols));
                     line = split;
-                    line_len = line.chars().filter(|c| *c != '\r').map(|c| c.width().unwrap()).sum();
+                    line_len = line.width();
                 } else {
                     lines.push(Self::pad_text(line, num_cols));
                     line = String::new();
@@ -120,8 +120,7 @@ impl Message {
     /// Right-pad text to fit a specific number of columns.
     #[inline]
     fn pad_text(mut text: String, num_cols: usize) -> String {
-        let padding_len = num_cols.saturating_sub(
-            text.chars().filter(|c| *c != '\r').map(|c| c.width().unwrap()).sum());
+        let padding_len = num_cols.saturating_sub(text.width());
         text.extend(vec![' '; padding_len]);
         text
     }
@@ -348,6 +347,23 @@ mod tests {
             String::from("a [X]"),
             String::from("bc   "),
             String::from("defg ")
+        ]);
+    }
+
+    #[test]
+    fn wrap_with_unicode() {
+        let input = "ab\nc 👩d e fgh";
+        let mut message_buffer = MessageBuffer::new();
+        message_buffer.push(Message::new(input.into(), MessageType::Error));
+        let size = SizeInfo::new(7., 10., 1., 1., 0., 0., false);
+
+        let lines = message_buffer.message().unwrap().text(&size);
+
+        assert_eq!(lines, vec![
+            String::from("ab  [X]"),
+            // the "e" would fit in this line but 👩 width is 2
+            String::from("c 👩d  "),
+            String::from("e fgh  ")
         ]);
     }
 
